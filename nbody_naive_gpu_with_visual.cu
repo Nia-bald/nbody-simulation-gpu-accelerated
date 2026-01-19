@@ -14,7 +14,7 @@ struct Particle {
 };
 
 
-const float G = 1.0f;
+const float G = 6.0f;
 const float SOFTENNING = 0.1f;
 const float DT = 0.01f;
 const int BLOCK_SIZE = 256; // number of threads in a block, wise to 
@@ -88,7 +88,7 @@ void drawParticles(const std::vector<Particle>& particles) {
 }
 
 int main() {
-    const int N = 10000;
+    const int N = 20000;
     const int STEPS = 10;
 
     size_t bytes = N*sizeof(Particle);
@@ -109,6 +109,12 @@ int main() {
         h_particles[i].vz = 0.0f;
     }
 
+    if (!glfwInit()) return -1;
+
+    GLFWwindow* window = glfwCreateWindow(800, 800, "CUDA N-Body Simulation", NULL, NULL);
+    if (!window) { glfwTerminate(); return -1; }
+    glfwMakeContextCurrent(window);
+
     Particle* d_particles;
 
     cudaMalloc(&d_particles, bytes);
@@ -123,11 +129,16 @@ int main() {
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    for (int i = 0; i < STEPS; i++){
+    while (!glfwWindowShouldClose(window)){
         computeVelocity<<<nBlocks, BLOCK_SIZE>>>(d_particles, N);
         updatePositions<<<nBlocks, BLOCK_SIZE>>>(d_particles, N);
         cudaDeviceSynchronize();
-        std::cout << "." << std::flush;
+
+        cudaMemcpy(h_particles.data(), d_particles, bytes, cudaMemcpyDeviceToHost);
+
+        drawParticles(h_particles);
+        glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 
     std::cout << std::endl;
@@ -143,6 +154,7 @@ int main() {
     double ops_per_sec = ((double)N * N * STEPS) / (total_ms / 1000.0);
     std::cout << "Throughput:     " << ops_per_sec / 1e6 << " M-Interactions/sec" << std::endl;
 
+    glfwTerminate();
     return 0;
 
 
