@@ -1,6 +1,6 @@
 # High-Performance CUDA N-Body Simulation
 
-![CUDA](https://img.shields.io/badge/CUDA-12.0+-green.svg) ![C++](https://img.shields.io/badge/C++-17-blue.svg) ![OpenGL](https://img.shields.io/badge/OpenGL-3.3+-orange.svg) ![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)
+![CUDA](https://img.shields.io/badge/CUDA-12.0+-green.svg) ![C++](https://img.shields.io/badge/C++-17-blue.svg) ![OpenGL](https://img.shields.io/badge/OpenGL-3.3+-orange.svg) 
 
 A high-performance gravitational N-Body simulation engine built with **C++ and CUDA**. This project demonstrates the evolution of systems optimization—starting from a standard $O(N^2)$ CPU implementation, progressing to a Naive GPU port, and culminating in a highly optimized **Shared Memory Tiling** implementation that achieves over **60 Giga-Interactions/second**.
 
