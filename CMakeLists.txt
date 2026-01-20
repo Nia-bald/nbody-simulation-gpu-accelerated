@@ -8,20 +8,16 @@ set(CMAKE_CUDA_ARCHITECTURES 61)
 find_package(OpenGL REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 
-# We define the executable
-add_executable(nbody_cpu nbody_cpu.cpp)
-add_executable(nbody_gpu nbody_naive_gpu.cu)
-add_executable(nbody_gpu_shared_mem nbody_gpu_with_shared_mem.cu)
 
+include_directories(include)
 
-target_link_libraries(nbody_cpu PRIVATE OpenGL::GL glfw)
-target_link_libraries(nbody_gpu PRIVATE OpenGL::GL glfw)
-target_link_libraries(nbody_gpu_shared_mem PRIVATE OpenGL::GL glfw)
+set(SOURCES 
+    src/main.cpp 
+    src/CPUSimulation.cpp 
+    src/GPUSimulation.cu
+)
 
+add_executable(nbody_modular ${SOURCES})
 
-# OPTIMIZATION FLAGS:
-# -O3: Maximum optimization
-# -march=native: Use AVX instructions available on your i7-7700HQ
-target_compile_options(nbody_cpu PRIVATE -O3 -march=native)
-target_compile_options(nbody_gpu PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3>)
-target_compile_options(nbody_gpu_shared_mem PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3>)
+target_link_libraries(nbody_modular PRIVATE OpenGL::GL glfw)
+target_compile_options(nbody_modular PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3>)
