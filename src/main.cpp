@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
     int N = 10000;
     int STEPS = 20;
     std::string streategy = "shared";
-    std::string run_mode = "visual_vbo"; // 
+    std::string run_mode = "visual_vbo";  
 
     // 2. Override with arguments if they exist
     // argv[0] is the program name, so we start checking from argv[1]
@@ -61,9 +61,9 @@ int main(int argc, char* argv[]) {
         particles[i].mass = massDist(gen);
         float r = std::sqrt((particles[i].x*particles[i].x) + (particles[i].y*particles[i].y) + (particles[i].z*particles[i].z) + SOFTENNING*SOFTENNING);
         float magnitude = 10.0f;
-        particles[i].vx = -magnitude*particles[i].x/r;
-        particles[i].vy = magnitude*particles[i].y/r;
-        particles[i].vz = magnitude*particles[i].z/r;
+        particles[i].vx = -magnitude*particles[i].y/r; // Simple rotation
+        particles[i].vy = magnitude*particles[i].x/r;
+        particles[i].vz = 0.0f;
     }
 
     std::unique_ptr<ISimulation> sim;
