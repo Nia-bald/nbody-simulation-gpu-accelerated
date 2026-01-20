@@ -3,6 +3,7 @@
 #include <memory>
 #include <chrono>
 #include <random>
+#include <cstdlib>
 #include <GL/glew.h> 
 #include <GLFW/glfw3.h>
 #include "CPUSimulation.h"
@@ -28,11 +29,27 @@ void drawParticles(const std::vector<Particle>& particles) {
 
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    // 1. Set Default Values
     int N = 10000;
     int STEPS = 20;
-    std::string mode = "shared";
-    std::string run_mode = "visual_vbo"; //visual or benchmark
+    std::string streategy = "shared";
+    std::string run_mode = "visual_vbo"; // 
+
+    // 2. Override with arguments if they exist
+    // argv[0] is the program name, so we start checking from argv[1]
+    if (argc > 1) {
+        N = std::stoi(argv[1]); 
+    }
+    if (argc > 2) {
+        STEPS = std::stoi(argv[2]);
+    }
+    if (argc > 3) {
+        streategy = argv[3];
+    }
+    if (argc > 4) {
+        run_mode = argv[4];
+    }
     std::vector<Particle> particles(N);
     std::mt19937 gen(42);
     std::uniform_real_distribution<float> posDist(-100.0f, 100.0f);
@@ -51,12 +68,12 @@ int main() {
 
     std::unique_ptr<ISimulation> sim;
 
-    if (mode == "cpu") {
+    if (streategy == "cpu") {
         sim = std::make_unique<CPUSimulation>(particles);
     } 
-    else if (mode == "naive") {
+    else if (streategy == "naive") {
         sim = std::make_unique<GPUSimulation>(particles, Strategy::NAIVE);
-    } else if (mode == "shared") {
+    } else if (streategy == "shared") {
         sim = std::make_unique<GPUSimulation>(particles, Strategy::SHARED);
     } else {
         std::cerr << "Usage: ./nbody [cpu|naive|shared] [N] [STEPS]\n";
@@ -96,7 +113,7 @@ int main() {
         }
     }
     if (run_mode == "visual_vbo") {
-        if (mode == "cpu") {
+        if (streategy == "cpu") {
             std::cout << "vbo not supported with CPU" << std::endl;
             return 0;
         }
@@ -118,9 +135,9 @@ int main() {
         glBindBuffer(GL_ARRAY_BUFFER, vbo_col);
         glBufferData(GL_ARRAY_BUFFER, N * sizeof(float) * 3, 0, GL_DYNAMIC_DRAW);
 
-        if (mode == "naive") {
+        if (streategy == "naive") {
             sim = std::make_unique<GPUSimulation>(particles, Strategy::NAIVE, vbo_pos, vbo_col);
-        } else if (mode == "shared") {
+        } else if (streategy == "shared") {
             sim = std::make_unique<GPUSimulation>(particles, Strategy::SHARED, vbo_pos, vbo_col);
         } else {
             std::cerr << "Usage: ./nbody [cpu|naive|shared] [N] [STEPS]\n";
