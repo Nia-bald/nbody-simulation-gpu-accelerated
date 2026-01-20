@@ -3,9 +3,10 @@
 #include <memory>
 #include <chrono>
 #include <random>
+#include <GL/glew.h> 
+#include <GLFW/glfw3.h>
 #include "CPUSimulation.h"
 #include "GPUSimulation.cuh"
-#include <GLFW/glfw3.h> // Graphics Header
 
 
 void drawParticles(const std::vector<Particle>& particles) {
@@ -31,7 +32,7 @@ int main() {
     int N = 10000;
     int STEPS = 20;
     std::string mode = "shared";
-    std::string run_mode = "visual"; //visual or benchmark
+    std::string run_mode = "visual_vbo"; //visual or benchmark
     std::vector<Particle> particles(N);
     std::mt19937 gen(42);
     std::uniform_real_distribution<float> posDist(-100.0f, 100.0f);
@@ -41,16 +42,19 @@ int main() {
         particles[i].y = posDist(gen);
         particles[i].z = posDist(gen);
         particles[i].mass = massDist(gen);
-        particles[i].vx = 0.0f;
-        particles[i].vy = 0.0f;
-        particles[i].vz = 0.0f;
+        float r = std::sqrt((particles[i].x*particles[i].x) + (particles[i].y*particles[i].y) + (particles[i].z*particles[i].z) + SOFTENNING*SOFTENNING);
+        float magnitude = 10.0f;
+        particles[i].vx = -magnitude*particles[i].x/r;
+        particles[i].vy = magnitude*particles[i].y/r;
+        particles[i].vz = magnitude*particles[i].z/r;
     }
 
     std::unique_ptr<ISimulation> sim;
 
     if (mode == "cpu") {
         sim = std::make_unique<CPUSimulation>(particles);
-    } else if (mode == "naive") {
+    } 
+    else if (mode == "naive") {
         sim = std::make_unique<GPUSimulation>(particles, Strategy::NAIVE);
     } else if (mode == "shared") {
         sim = std::make_unique<GPUSimulation>(particles, Strategy::SHARED);
@@ -91,5 +95,84 @@ int main() {
     
         }
     }
+    if (run_mode == "visual_vbo") {
+        if (mode == "cpu") {
+            std::cout << "vbo not supported with CPU" << std::endl;
+            return 0;
+        }
+        if (!glfwInit()) return -1;
+
+        GLFWwindow* window = glfwCreateWindow(800, 800, "CUDA N-Body Simulation", NULL, NULL);
+        if (!window) { glfwTerminate(); return -1; }
+        glfwMakeContextCurrent(window);
+        glewInit(); // Init GLEW after context
+        
+        unsigned int vbo_pos;
+        glGenBuffers(1, &vbo_pos);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_pos);
+        glBufferData(GL_ARRAY_BUFFER, N * sizeof(float) * 3, 0, GL_DYNAMIC_DRAW);
+
+        // 2. Create Color VBO (NEW)
+        unsigned int vbo_col;
+        glGenBuffers(1, &vbo_col);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_col);
+        glBufferData(GL_ARRAY_BUFFER, N * sizeof(float) * 3, 0, GL_DYNAMIC_DRAW);
+
+        if (mode == "naive") {
+            sim = std::make_unique<GPUSimulation>(particles, Strategy::NAIVE, vbo_pos, vbo_col);
+        } else if (mode == "shared") {
+            sim = std::make_unique<GPUSimulation>(particles, Strategy::SHARED, vbo_pos, vbo_col);
+        } else {
+            std::cerr << "Usage: ./nbody [cpu|naive|shared] [N] [STEPS]\n";
+            return 1;
+        }
+
+        float rotate_x = 0.0f;
+        float rotate_y = 0.0f;
+        while (!glfwWindowShouldClose(window)){
+            sim->step();
+            // B. Clear Screen
+            if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) rotate_y += 1.0f;
+            if (glfwGetKey(window, GLFW_KEY_LEFT)  == GLFW_PRESS) rotate_y -= 1.0f;
+            // Rotate X-axis (Pitch)
+            if (glfwGetKey(window, GLFW_KEY_UP)    == GLFW_PRESS) rotate_x -= 1.0f;
+            if (glfwGetKey(window, GLFW_KEY_DOWN)  == GLFW_PRESS) rotate_x += 1.0f;
+        
+            // --- 3. RENDERING ---
+            glClear(GL_COLOR_BUFFER_BIT);
+            glLoadIdentity();
+        
+            // ORDER MATTERS HERE:
+            // A. Apply Rotation first (so you rotate the world)
+            glRotatef(rotate_x, 1.0f, 0.0f, 0.0f); // Rotate around X-axis
+            glRotatef(rotate_y, 0.0f, 1.0f, 0.0f); // Rotate around Y-axis
+            
+            // B. Then Scale (Keep your existing zoom)
+            glScalef(0.01f, 0.01f, 0.01f); 
+        
+            // Enable Position Array
+            glEnableClientState(GL_VERTEX_ARRAY);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo_pos);
+            glVertexPointer(3, GL_FLOAT, 0, 0);
+        
+            // Enable Color Array
+            glEnableClientState(GL_COLOR_ARRAY);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo_col);
+            glColorPointer(3, GL_FLOAT, 0, 0);
+        
+            // Draw
+            glDrawArrays(GL_POINTS, 0, N);
+        
+            // Cleanup
+            glDisableClientState(GL_COLOR_ARRAY);
+            glDisableClientState(GL_VERTEX_ARRAY);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+        }
+        glfwTerminate();
+    }
+
     return 0;
 }

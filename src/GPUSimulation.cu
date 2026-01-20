@@ -1,12 +1,28 @@
 #include "GPUSimulation.cuh"
+#include <cuda_gl_interop.h>
 
-GPUSimulation::GPUSimulation(std::vector<Particle>& h_particles, Strategy strgy){
+GPUSimulation::GPUSimulation(std::vector<Particle>& h_particles, Strategy strgy, unsigned int vbo_pos, unsigned int vbo_col){
     strategy = strgy;
     total_particles = h_particles.size();
     nBlocks = (total_particles + BLOCK_SIZE - 1)/BLOCK_SIZE;
     bytes = total_particles*sizeof(Particle);
+    //after this step d_particles start pointing to address in GPU instead of CPU;
     cudaMalloc(&d_particles, bytes);
     cudaMemcpy(d_particles, h_particles.data(), bytes, cudaMemcpyHostToDevice);
+
+    if (vbo_pos != 0 && vbo_col != 0){
+        useInterop = true;
+        // Register Position Buffer
+        cudaGraphicsGLRegisterBuffer(&cuda_vbo_resource, vbo_pos, cudaGraphicsMapFlagsWriteDiscard);
+        
+        // Register Color Buffer (NEW)
+        cudaGraphicsGLRegisterBuffer(&cuda_color_resource, vbo_col, cudaGraphicsMapFlagsWriteDiscard);    
+    }
+    else{
+        useInterop = false;
+        d_posVisual = nullptr;
+        d_colorVisual = nullptr;
+    }
     std::cout << "Launching" << nBlocks << " blocks with " << BLOCK_SIZE << "threads each." << std::endl;
     cudaDeviceSynchronize();
 }
@@ -21,6 +37,23 @@ std::string GPUSimulation::get_name() {
     }
     return "GPU UNKNOWN";
 }
+
+__global__ void updatePositionInterop(Particle* p, float3* pos_vbo, float3* col_vbo, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    
+    p[i].x += p[i].vx*DT;
+    p[i].y += p[i].vy*DT;
+    p[i].z += p[i].vz*DT;
+    pos_vbo[i] = make_float3(p[i].x, p[i].y, p[i].z);
+    float intensity = (p[i].z + 100.0f) / 200.0f;
+    
+    // Clamp values
+    if (intensity < 0.2f) intensity = 0.2f; // Don't get too dark
+    if (intensity > 1.0f) intensity = 1.0f;
+    col_vbo[i] = make_float3(intensity, intensity, 1.0f);
+}
+
 
 __global__ void computeVelocityNaive(Particle* p, int n) {
 
@@ -153,12 +186,10 @@ __global__ void updatePositions(Particle* p, int n) {
 
 void GPUSimulation::step_naive() {
     computeVelocityNaive<<<nBlocks, BLOCK_SIZE>>>(d_particles, total_particles);
-    updatePositions<<<nBlocks, BLOCK_SIZE>>>(d_particles, total_particles);
 }
 
 void GPUSimulation::step_shared() {
     computeVelocityShared<<<nBlocks, BLOCK_SIZE>>>(d_particles, total_particles);
-    updatePositions<<<nBlocks, BLOCK_SIZE>>>(d_particles, total_particles);
 }
 
 
@@ -169,6 +200,29 @@ void GPUSimulation::step(){
     if (strategy == Strategy :: SHARED){
         step_shared();
     }
+
+    if (useInterop) {
+        size_t num_bytes;
+        // tells open gl to not render this vbo resource because cuda is writing to it
+        cudaGraphicsMapResources(1, &cuda_vbo_resource, 0);
+        
+
+        // makes d_posVisual a pointer that points to inside OpenGL VBO
+        cudaGraphicsResourceGetMappedPointer((void**)&d_posVisual, &num_bytes, cuda_vbo_resource);
+
+        // Map Color (NEW)
+        cudaGraphicsMapResources(1, &cuda_color_resource, 0);
+        cudaGraphicsResourceGetMappedPointer((void**)&d_colorVisual, &num_bytes, cuda_color_resource);
+        // writes to the address on vertex buffer
+        updatePositionInterop<<<nBlocks, BLOCK_SIZE>>>(d_particles, d_posVisual, d_colorVisual, total_particles);
+
+        // ok now you openGL can access this buffer again
+        cudaGraphicsUnmapResources(1, &cuda_color_resource, 0);
+        cudaGraphicsUnmapResources(1, &cuda_vbo_resource, 0);
+    }
+    else {
+        updatePositions<<<nBlocks, BLOCK_SIZE>>>(d_particles, total_particles);
+    }
     cudaDeviceSynchronize();
 }
 
@@ -178,5 +232,8 @@ void GPUSimulation::write_to_host(std::vector<Particle>& h_particles){
 
 
 GPUSimulation::~GPUSimulation(){
+    if (useInterop) {
+        cudaGraphicsUnregisterResource(cuda_vbo_resource);
+    }
     cudaFree(d_particles);
 }
